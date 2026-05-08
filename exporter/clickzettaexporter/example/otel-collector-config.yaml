@@ -1,0 +1,45 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1m
+    send_batch_size: 8192
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+exporters:
+  clickzetta:
+    service: https://your-service.clickzetta.com
+    username: your_username
+    password: your_password
+    workspace: your_workspace
+    virtual_cluster: your_vc
+    instance: your_instance
+    schema: public
+    create_schema: true
+    logs_table_name: otel_logs
+    traces_table_name: otel_traces
+    metrics_table_name: otel_metrics
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [clickzetta]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [clickzetta]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [clickzetta]

@@ -1,0 +1,20 @@
+type: clickzetta
+display_name: ClickZetta Exporter
+
+status:
+  class: exporter
+  stability:
+    development: [traces, metrics, logs]
+  distributions: []
+  codeowners:
+    active: [WZhuo]
+
+tests:
+  config:
+    service: https://example.clickzetta.com
+    username: default
+    password: default
+    workspace: default
+    virtual_cluster: default
+    instance: default
+  skip_lifecycle: true

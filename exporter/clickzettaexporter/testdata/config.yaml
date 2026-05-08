@@ -1,0 +1,12 @@
+clickzetta:
+  service: https://example.clickzetta.com
+  username: default
+  password: default
+  workspace: default
+  virtual_cluster: default
+  instance: default
+  schema: public
+  create_schema: true
+  logs_table_name: otel_logs
+  traces_table_name: otel_traces
+  metrics_table_name: otel_metrics
