@@ -1,10 +1,20 @@
+extensions:
+  basicauth:
+    htpasswd:
+      inline: |
+        ${env:OTEL_BASIC_AUTH_HTPASSWD}
+
 receivers:
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        auth:
+          authenticator: basicauth
       http:
         endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: basicauth
 
 processors:
   batch:
@@ -17,12 +27,12 @@ processors:
 
 exporters:
   clickzetta:
-    service: https://your-service.clickzetta.com
-    username: your_username
-    password: your_password
-    workspace: your_workspace
-    virtual_cluster: your_vc
-    instance: your_instance
+    service: ${env:CLICKZETTA_SERVICE}
+    username: ${env:CLICKZETTA_USERNAME}
+    password: ${env:CLICKZETTA_PASSWORD}
+    workspace: ${env:CLICKZETTA_WORKSPACE}
+    virtual_cluster: ${env:CLICKZETTA_VC}
+    instance: ${env:CLICKZETTA_INSTANCE}
     schema: public
     create_schema: true
     logs_table_name: otel_logs
@@ -30,6 +40,7 @@ exporters:
     metrics_table_name: otel_metrics
 
 service:
+  extensions: [basicauth]
   pipelines:
     traces:
       receivers: [otlp]

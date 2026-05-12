@@ -60,7 +60,7 @@ docker build -f exporter/clickzettaexporter/example/Dockerfile --build-arg TARGE
 ```yaml
 exporters:
   clickzetta:
-    service: https://your-service.clickzetta.com
+    service: your-service.clickzetta.com
     username: your_username
     password: your_password
     workspace: your_workspace

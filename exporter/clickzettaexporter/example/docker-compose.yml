@@ -1,0 +1,40 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "10"
+
+services:
+  otel-collector-backend:
+    image: otelcol-clickzetta:latest
+    command: ["--config=/etc/otelcol/config.yaml"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      OTEL_BASIC_AUTH_HTPASSWD: "${OTEL_BASIC_AUTH_HTPASSWD}"
+      CLICKZETTA_SERVICE: "${CLICKZETTA_SERVICE}"
+      CLICKZETTA_USERNAME: "${CLICKZETTA_USERNAME}"
+      CLICKZETTA_PASSWORD: "${CLICKZETTA_PASSWORD}"
+      CLICKZETTA_WORKSPACE: "${CLICKZETTA_WORKSPACE}"
+      CLICKZETTA_VC: "${CLICKZETTA_VC}"
+      CLICKZETTA_INSTANCE: "${CLICKZETTA_INSTANCE}"
+    ports:
+      - "4317:4317" # OTLP gRPC — app sends here
+      - "4318:4318" # OTLP HTTP — app sends here
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+
+  grafana:
+    image: grafana/grafana:latest
+    user: root
+    logging: *default-logging
+    environment:
+      GF_AUTH_BASIC_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ${DATA_DIR:-/data}/grafana:/var/lib/grafana
+    ports:
+      - "3001:3000"
