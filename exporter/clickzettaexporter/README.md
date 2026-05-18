@@ -4,7 +4,7 @@
 
 This exporter sends OpenTelemetry logs, traces, and metrics data to [ClickZetta](https://www.yunqi.tech) lakehouse using the ClickZetta Go SDK's BulkLoad API.
 
-## Build
+## Build from Source
 
 1. Configure the builder:
 
@@ -34,6 +34,26 @@ make otelcontribcol
 GOOS=linux GOARCH=amd64 make otelcontribcol
 docker build -f exporter/clickzettaexporter/example/Dockerfile --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 -t otelcol-clickzetta .
 ```
+
+## cz-otel CLI Tool
+
+The `cz-otel/` subdirectory contains a standalone CLI tool that wraps this exporter into a ready-to-use package. It provides:
+
+- **Interactive configuration** — set up ClickZetta connection details without editing YAML manually
+- **Collector config generation** — automatically produces a valid collector config from stored settings
+- **Daemon management** — start, stop, restart, and monitor the collector as a background process
+- **Cross-platform support** — macOS, Linux, and Windows with platform-specific packages
+
+Quick usage:
+
+```bash
+cz-otel config init       # Interactive setup wizard
+cz-otel start             # Launch collector as background daemon
+cz-otel status            # Check if collector is running
+cz-otel logs --follow     # Stream collector logs
+```
+
+See [`cz-otel/README.md`](cz-otel/README.md) for full documentation, or [`cz-otel/README.zh.md`](cz-otel/README.zh.md) for the Chinese version.
 
 ## Configuration
 
