@@ -26,6 +26,16 @@ func NewFactory() exporter.Factory {
 
 func createLogsExporter(ctx context.Context, set exporter.Settings, cfg component.Config) (exporter.Logs, error) {
 	c := cfg.(*Config)
+	if c.isGatewayMode() {
+		exp := newGatewayLogsExporter(set.Logger, c)
+		return exporterhelper.NewLogs(ctx, set, cfg, exp.pushLogsData,
+			exporterhelper.WithStart(exp.start),
+			exporterhelper.WithShutdown(exp.shutdown),
+			exporterhelper.WithTimeout(c.TimeoutSettings),
+			exporterhelper.WithQueue(c.QueueSettings),
+			exporterhelper.WithRetry(c.BackOffConfig),
+		)
+	}
 	exp := newLogsExporter(set.Logger, c)
 	return exporterhelper.NewLogs(ctx, set, cfg, exp.pushLogsData,
 		exporterhelper.WithStart(exp.start),
@@ -38,6 +48,16 @@ func createLogsExporter(ctx context.Context, set exporter.Settings, cfg componen
 
 func createTracesExporter(ctx context.Context, set exporter.Settings, cfg component.Config) (exporter.Traces, error) {
 	c := cfg.(*Config)
+	if c.isGatewayMode() {
+		exp := newGatewayTracesExporter(set.Logger, c)
+		return exporterhelper.NewTraces(ctx, set, cfg, exp.pushTraceData,
+			exporterhelper.WithStart(exp.start),
+			exporterhelper.WithShutdown(exp.shutdown),
+			exporterhelper.WithTimeout(c.TimeoutSettings),
+			exporterhelper.WithQueue(c.QueueSettings),
+			exporterhelper.WithRetry(c.BackOffConfig),
+		)
+	}
 	exp := newTracesExporter(set.Logger, c)
 	return exporterhelper.NewTraces(ctx, set, cfg, exp.pushTraceData,
 		exporterhelper.WithStart(exp.start),
@@ -50,6 +70,16 @@ func createTracesExporter(ctx context.Context, set exporter.Settings, cfg compon
 
 func createMetricsExporter(ctx context.Context, set exporter.Settings, cfg component.Config) (exporter.Metrics, error) {
 	c := cfg.(*Config)
+	if c.isGatewayMode() {
+		exp := newGatewayMetricsExporter(set.Logger, c)
+		return exporterhelper.NewMetrics(ctx, set, cfg, exp.pushMetricsData,
+			exporterhelper.WithStart(exp.start),
+			exporterhelper.WithShutdown(exp.shutdown),
+			exporterhelper.WithTimeout(c.TimeoutSettings),
+			exporterhelper.WithQueue(c.QueueSettings),
+			exporterhelper.WithRetry(c.BackOffConfig),
+		)
+	}
 	exp := newMetricsExporter(set.Logger, c)
 	return exporterhelper.NewMetrics(ctx, set, cfg, exp.pushMetricsData,
 		exporterhelper.WithStart(exp.start),
