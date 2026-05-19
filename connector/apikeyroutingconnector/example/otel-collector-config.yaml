@@ -1,0 +1,128 @@
+# Example OpenTelemetry Collector configuration with the API Key Routing Connector.
+#
+# This configuration demonstrates:
+# - OTLP receiver with include_metadata: true (required for API key access)
+# - Processors (batch, memory_limiter) in the upstream pipeline
+# - The apikeyrouting connector with all configuration fields
+# - A default fallback pipeline with a static exporter
+#
+# Tenant-specific pipelines are created dynamically by the connector at runtime
+# based on Key Service responses. You do NOT need to pre-configure per-tenant
+# pipelines or exporters in this file.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+    # IMPORTANT: include_metadata must be true for the connector to access
+    # the API key from request headers (e.g., x-api-key).
+    include_metadata: true
+
+processors:
+  # Processors in the upstream pipeline work normally.
+  # Client_Metadata (including the API key header) is preserved through
+  # the processor chain.
+  batch:
+    send_batch_size: 1000
+    timeout: 5s
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+
+connectors:
+  apikeyrouting:
+    # Base URL of the Key Service API.
+    # The connector calls GET {key_service_url}/v1/api/keys/{api_key}
+    key_service_url: "http://key-service:8080"
+
+    # The metadata key to extract the API key from (default: x-api-key).
+    key_header: "x-api-key"
+
+    # Duration to cache Key Service responses (default: 5m).
+    # Stale cache entries are served during Key Service outages.
+    cache_ttl: 5m
+
+    # HTTP request timeout for Key Service calls (default: 5s).
+    key_service_timeout: 5s
+
+    # Exporter type to use when the Key Service response omits exporter_type
+    # (default: clickzetta).
+    default_exporter_type: "clickzetta"
+
+    # Duration after which an unused dynamic exporter is shut down and
+    # evicted from the cache (default: 30m).
+    exporter_idle_timeout: 30m
+
+    # Pipelines to route to when a key cannot be resolved or is missing.
+    # If empty, unresolved telemetry is dropped with a warning.
+    default_pipelines:
+      - logs/default
+      - traces/default
+      - metrics/default
+
+exporters:
+  # Static default exporter for unresolved keys.
+  clickzetta/default:
+    service: "default-lakehouse.example.com"
+    username: "default_writer"
+    password: "default_secret"
+    workspace: "default_workspace"
+    instance: "default-01"
+    virtual_cluster: "vc_default"
+    schema: "observability"
+
+service:
+  pipelines:
+    # ─── Upstream pipelines ───────────────────────────────────────────
+    # Telemetry flows: receiver → processors → connector
+    logs/ingress:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [apikeyrouting]
+
+    traces/ingress:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [apikeyrouting]
+
+    metrics/ingress:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [apikeyrouting]
+
+    # ─── Default fallback pipelines (static) ──────────────────────────
+    # These receive telemetry when the API key is missing, invalid, or
+    # cannot be resolved by the Key Service.
+    logs/default:
+      receivers: [apikeyrouting]
+      exporters: [clickzetta/default]
+
+    traces/default:
+      receivers: [apikeyrouting]
+      exporters: [clickzetta/default]
+
+    metrics/default:
+      receivers: [apikeyrouting]
+      exporters: [clickzetta/default]
+
+    # ─── Dynamic pipelines ────────────────────────────────────────────
+    # Tenant-specific pipelines and exporters are created dynamically by
+    # the connector based on Key Service responses. For example, when the
+    # Key Service returns:
+    #
+    #   {
+    #     "pipeline_id": "tenant-a",
+    #     "exporter_type": "clickzetta",
+    #     "exporter_config": {
+    #       "service": "tenant-a-lakehouse.example.com",
+    #       "username": "tenant_a_writer",
+    #       ...
+    #     }
+    #   }
+    #
+    # The connector will dynamically create a clickzetta exporter with that
+    # configuration and route the telemetry to it. No static pipeline
+    # definition is needed for tenant-specific routing.
