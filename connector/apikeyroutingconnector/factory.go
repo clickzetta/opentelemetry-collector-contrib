@@ -36,6 +36,8 @@ func createDefaultConfig() component.Config {
 		KeyServiceTimeout:   5 * time.Second,
 		DefaultExporterType: "clickzetta",
 		ExporterIdleTimeout: 30 * time.Minute,
+		BatchSize:           0, // disabled by default
+		FlushInterval:       5 * time.Second,
 	}
 }
 
@@ -71,6 +73,11 @@ func createMetricsToMetrics(
 		cfg:             c,
 		logger:          set.Logger,
 		defaultConsumer: metrics,
+		settings: exporter.Settings{
+			ID:                set.ID,
+			TelemetrySettings: set.TelemetrySettings,
+			BuildInfo:         set.BuildInfo,
+		},
 	}, nil
 }
 
@@ -86,5 +93,10 @@ func createLogsToLogs(
 		cfg:             c,
 		logger:          set.Logger,
 		defaultConsumer: logs,
+		settings: exporter.Settings{
+			ID:                set.ID,
+			TelemetrySettings: set.TelemetrySettings,
+			BuildInfo:         set.BuildInfo,
+		},
 	}, nil
 }

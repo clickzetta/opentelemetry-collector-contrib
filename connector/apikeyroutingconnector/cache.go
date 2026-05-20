@@ -12,13 +12,14 @@ import (
 // including the exporter type and config needed to create/lookup the exporter.
 type RouteEntry struct {
 	PipelineID     string
+	ExporterID     string
 	ExporterType   string
 	ExporterConfig map[string]any
 }
 
-// cacheEntry holds a cached RouteEntry with its expiration time.
+// cacheEntry holds cached RouteEntries with their expiration time.
 type cacheEntry struct {
-	entry     *RouteEntry
+	entries   []*RouteEntry
 	expiresAt time.Time
 	storedAt  time.Time
 }
@@ -41,11 +42,11 @@ func NewRouteCache(ttl time.Duration) *RouteCache {
 	}
 }
 
-// Get returns the cached RouteEntry for the key.
-// Returns (entry, true) if found and fresh.
-// Returns (entry, false) if found but expired (stale).
+// Get returns the cached RouteEntries for the key.
+// Returns (entries, true) if found and fresh.
+// Returns (entries, false) if found but expired (stale).
 // Returns (nil, false) if not found.
-func (c *RouteCache) Get(key string) (*RouteEntry, bool) {
+func (c *RouteCache) Get(key string) ([]*RouteEntry, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -55,21 +56,21 @@ func (c *RouteCache) Get(key string) (*RouteEntry, bool) {
 	}
 
 	if c.nowFunc().Before(ce.expiresAt) {
-		return ce.entry, true
+		return ce.entries, true
 	}
 
 	// Entry exists but is expired — return stale
-	return ce.entry, false
+	return ce.entries, false
 }
 
-// Set stores a RouteEntry with the configured TTL.
-func (c *RouteCache) Set(key string, entry *RouteEntry) {
+// Set stores RouteEntries with the configured TTL.
+func (c *RouteCache) Set(key string, entries []*RouteEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	now := c.nowFunc()
 	c.entries[key] = &cacheEntry{
-		entry:     entry,
+		entries:   entries,
 		expiresAt: now.Add(c.ttl),
 		storedAt:  now,
 	}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -38,24 +39,29 @@ func isRetryable(err error) bool {
 }
 
 // KeyServiceResponse represents the JSON response from the Key Service.
+// Format:
+//
+//	{
+//	  "id": 0,
+//	  "name": "tenant-a",
+//	  "exporters": [
+//	    { "exporter_id": "0", "exporter_type": "clickzetta", "exporter_config": {...} }
+//	  ]
+//	}
 type KeyServiceResponse struct {
-	// PipelineID is the logical pipeline identifier for this key.
-	PipelineID string `json:"pipeline_id"`
+	// ID is the numeric tenant identifier.
+	ID int `json:"id"`
 
-	// ExporterType is the type of exporter to create (e.g., "clickzetta", "otlp", "file").
-	ExporterType string `json:"exporter_type"`
+	// Name is the tenant name, used as the logical pipeline identifier.
+	Name string `json:"name"`
 
-	// ExporterConfig is the raw exporter configuration as a JSON object.
-	ExporterConfig map[string]any `json:"exporter_config"`
-
-	// Pipelines is an optional list of pipeline targets for multi-pipeline routing.
-	// Takes precedence over the top-level fields when present and non-empty.
-	Pipelines []PipelineTarget `json:"pipelines,omitempty"`
+	// Exporters is the list of exporter targets for this tenant.
+	Exporters []ExporterTarget `json:"exporters"`
 }
 
-// PipelineTarget represents a single pipeline target with its exporter config.
-type PipelineTarget struct {
-	PipelineID     string         `json:"pipeline_id"`
+// ExporterTarget represents a single exporter target with its config.
+type ExporterTarget struct {
+	ExporterID     string         `json:"exporter_id"`
 	ExporterType   string         `json:"exporter_type"`
 	ExporterConfig map[string]any `json:"exporter_config"`
 }
@@ -77,37 +83,28 @@ func NewKeyServiceClient(baseURL string, timeout time.Duration) *KeyServiceClien
 }
 
 // parseRouteEntry converts the Key Service response into a RouteEntry slice.
-// When the pipelines array is non-empty, each pipeline target becomes a RouteEntry.
-// When pipelines is empty, the top-level fields are used as a single RouteEntry.
+// Each exporter in the response becomes a RouteEntry.
+// The tenant name is used as the PipelineID for all entries.
 // When exporter_type is empty in any entry, defaultExporterType is used.
 func parseRouteEntry(resp *KeyServiceResponse, defaultExporterType string) ([]*RouteEntry, error) {
-	if len(resp.Pipelines) > 0 {
-		entries := make([]*RouteEntry, 0, len(resp.Pipelines))
-		for _, p := range resp.Pipelines {
-			exporterType := p.ExporterType
-			if exporterType == "" {
-				exporterType = defaultExporterType
-			}
-			entries = append(entries, &RouteEntry{
-				PipelineID:     p.PipelineID,
-				ExporterType:   exporterType,
-				ExporterConfig: p.ExporterConfig,
-			})
-		}
-		return entries, nil
+	if len(resp.Exporters) == 0 {
+		return nil, fmt.Errorf("key service response has no exporters for tenant %q", resp.Name)
 	}
 
-	exporterType := resp.ExporterType
-	if exporterType == "" {
-		exporterType = defaultExporterType
-	}
-	return []*RouteEntry{
-		{
-			PipelineID:     resp.PipelineID,
+	entries := make([]*RouteEntry, 0, len(resp.Exporters))
+	for _, e := range resp.Exporters {
+		exporterType := e.ExporterType
+		if exporterType == "" {
+			exporterType = defaultExporterType
+		}
+		entries = append(entries, &RouteEntry{
+			PipelineID:     resp.Name,
+			ExporterID:     e.ExporterID,
 			ExporterType:   exporterType,
-			ExporterConfig: resp.ExporterConfig,
-		},
-	}, nil
+			ExporterConfig: e.ExporterConfig,
+		})
+	}
+	return entries, nil
 }
 
 // Resolve fetches the pipeline mapping for the given API key.
@@ -115,7 +112,7 @@ func parseRouteEntry(resp *KeyServiceResponse, defaultExporterType string) ([]*R
 //   - permanent (401/404): key is invalid, wrapped with errPermanentKeyInvalid
 //   - retryable (5xx/timeout/network/parse error): service unavailable, wrapped as retryableError
 func (c *KeyServiceClient) Resolve(ctx context.Context, apiKey string) (*KeyServiceResponse, error) {
-	url := fmt.Sprintf("%s/v1/api/keys/%s", c.baseURL, apiKey)
+	url := strings.ReplaceAll(c.baseURL, "{api_key}", apiKey)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

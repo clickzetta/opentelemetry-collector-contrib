@@ -36,7 +36,7 @@ If you are not already familiar with connectors, you may find it helpful to firs
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `key_service_url` | string | *(required)* | Base URL of the Key Service API. The connector appends `/v1/api/keys/{key}` to this URL. |
+| `key_service_url` | string | *(required)* | Full URL template for the Key Service API. Must contain `{api_key}` placeholder. Example: `http://key-service:8080/v1/apikeys/{api_key}/exporter` |
 | `key_header` | string | `x-api-key` | The Client_Metadata key to extract the API key from. |
 | `cache_ttl` | duration | `5m` | Duration to cache Key Service responses. Must be positive. |
 | `key_service_timeout` | duration | `5s` | HTTP request timeout for Key Service calls. Must be positive. |
@@ -49,7 +49,7 @@ If you are not already familiar with connectors, you may find it helpful to firs
 ```yaml
 connectors:
   apikeyrouting:
-    key_service_url: "http://key-service:8080"
+    key_service_url: "http://key-service:8080/v1/apikeys/{api_key}/exporter"
     key_header: "x-api-key"
     cache_ttl: 5m
     key_service_timeout: 5s
@@ -61,60 +61,43 @@ connectors:
 
 ## Key Service Response Schema
 
-The connector resolves API keys by calling:
+The connector resolves API keys by replacing `{api_key}` in the configured URL template:
 
 ```
-GET {key_service_url}/v1/api/keys/{api_key}
+GET http://key-service:8080/v1/apikeys/{api_key}/exporter
 ```
 
-### Single Pipeline Response
-
-When the Key Service resolves a key to a single pipeline target:
+### Response Example
 
 ```json
 {
-  "pipeline_id": "tenant-a",
-  "exporter_type": "clickzetta",
-  "exporter_config": {
-    "service": "lakehouse.example.com",
-    "username": "otel_writer",
-    "password": "secret",
-    "workspace": "acme_workspace",
-    "instance": "prod-01",
-    "virtual_cluster": "vc_ingest",
-    "schema": "observability"
-  }
-}
-```
-
-### Multi-Pipeline Response
-
-When the Key Service resolves a key to multiple pipeline targets, include a `pipelines` array. When present and non-empty, the `pipelines` array takes precedence over the top-level fields:
-
-```json
-{
-  "pipeline_id": "tenant-b",
-  "exporter_type": "clickzetta",
-  "exporter_config": {},
-  "pipelines": [
+  "id": 0,
+  "name": "tenant-a",
+  "exporters": [
     {
-      "pipeline_id": "tenant-b-primary",
+      "exporter_id": "0",
       "exporter_type": "clickzetta",
       "exporter_config": {
-        "service": "primary.example.com",
-        "username": "writer",
+        "service": "lakehouse.example.com",
+        "username": "otel_writer",
         "password": "secret",
-        "workspace": "workspace_b",
+        "workspace": "ws1",
         "instance": "prod-01",
         "virtual_cluster": "vc_ingest",
         "schema": "observability"
       }
     },
     {
-      "pipeline_id": "tenant-b-analytics",
-      "exporter_type": "otlp",
+      "exporter_id": "1",
+      "exporter_type": "clickzetta",
       "exporter_config": {
-        "endpoint": "analytics.example.com:4317"
+        "service": "lakehouse.example.com",
+        "username": "otel_writer",
+        "password": "secret",
+        "workspace": "ws2",
+        "instance": "prod-01",
+        "virtual_cluster": "vc_ingest",
+        "schema": "observability"
       }
     }
   ]
@@ -125,12 +108,17 @@ When the Key Service resolves a key to multiple pipeline targets, include a `pip
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `pipeline_id` | string | yes | Logical pipeline identifier for this key. |
+| `id` | integer | yes | Numeric tenant identifier. |
+| `name` | string | yes | Tenant name, used as the logical pipeline identifier. |
+| `exporters` | array | yes | List of exporter targets for this tenant. |
+
+Each entry in `exporters` has the following fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `exporter_id` | string | yes | Unique identifier for this exporter within the tenant. |
 | `exporter_type` | string | yes* | Type of exporter to create (e.g., `clickzetta`, `otlp`, `file`). Falls back to `default_exporter_type` if omitted. |
 | `exporter_config` | object | yes | Exporter-specific configuration passed to the exporter factory. |
-| `pipelines` | array | no | List of pipeline targets for multi-pipeline routing. Takes precedence over top-level fields when present. |
-
-Each entry in `pipelines` has the same structure: `pipeline_id`, `exporter_type`, and `exporter_config`.
 
 Unknown fields in the response are ignored without error.
 
@@ -211,7 +199,7 @@ processors:
 
 connectors:
   apikeyrouting:
-    key_service_url: "http://key-service:8080"
+    key_service_url: "http://key-service:8080/v1/apikeys/{api_key}/exporter"
     key_header: "x-api-key"
     cache_ttl: 5m
     key_service_timeout: 5s

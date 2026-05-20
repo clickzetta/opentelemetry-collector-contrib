@@ -108,7 +108,9 @@ func (m *ExporterManager) GetOrCreateLogs(ctx context.Context, exporterType stri
 		return nil, err
 	}
 
-	exp, err := factory.CreateLogs(ctx, m.settings, cfg)
+	// Create settings with a proper component ID for the dynamic exporter.
+	settings := m.settingsForExporter(exporterType, hash)
+	exp, err := factory.CreateLogs(ctx, settings, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logs exporter %q: %w", exporterType, err)
 	}
@@ -153,7 +155,8 @@ func (m *ExporterManager) GetOrCreateTraces(ctx context.Context, exporterType st
 		return nil, err
 	}
 
-	exp, err := factory.CreateTraces(ctx, m.settings, cfg)
+	settings := m.settingsForExporter(exporterType, hash)
+	exp, err := factory.CreateTraces(ctx, settings, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create traces exporter %q: %w", exporterType, err)
 	}
@@ -198,7 +201,8 @@ func (m *ExporterManager) GetOrCreateMetrics(ctx context.Context, exporterType s
 		return nil, err
 	}
 
-	exp, err := factory.CreateMetrics(ctx, m.settings, cfg)
+	settings := m.settingsForExporter(exporterType, hash)
+	exp, err := factory.CreateMetrics(ctx, settings, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics exporter %q: %w", exporterType, err)
 	}
@@ -269,6 +273,23 @@ func (m *ExporterManager) buildExporterConfig(exporterType string, exporterConfi
 	}
 
 	return factory, cfg, nil
+}
+
+// settingsForExporter creates exporter.Settings with a proper component.ID for the dynamic exporter.
+// The ID uses the exporter type (e.g., "clickzetta") and the config hash as the name suffix,
+// so the component ID is like "clickzetta/abc123..." which satisfies the type validation.
+func (m *ExporterManager) settingsForExporter(exporterType string, hash string) exporter.Settings {
+	// Use first 8 chars of hash as the name to keep it readable.
+	name := hash
+	if len(name) > 8 {
+		name = name[:8]
+	}
+	id := component.NewIDWithName(component.MustNewType(exporterType), name)
+	return exporter.Settings{
+		ID:                id,
+		TelemetrySettings: m.settings.TelemetrySettings,
+		BuildInfo:         m.settings.BuildInfo,
+	}
 }
 
 // getOrInitManagedExporter returns the existing managedExporter for the hash or creates a new one.

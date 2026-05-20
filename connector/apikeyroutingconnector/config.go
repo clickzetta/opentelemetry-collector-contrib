@@ -5,21 +5,25 @@ package apikeyroutingconnector // import "github.com/open-telemetry/opentelemetr
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/collector/pipeline"
 )
 
 var (
-	errEmptyKeyServiceURL       = errors.New("key_service_url must not be empty")
-	errNonPositiveCacheTTL      = errors.New("cache_ttl must be a positive duration")
-	errNonPositiveServiceTimeout = errors.New("key_service_timeout must be a positive duration")
+	errEmptyKeyServiceURL          = errors.New("key_service_url must not be empty")
+	errMissingAPIKeyPlaceholder    = errors.New("key_service_url must contain {api_key} placeholder")
+	errNonPositiveCacheTTL         = errors.New("cache_ttl must be a positive duration")
+	errNonPositiveServiceTimeout   = errors.New("key_service_timeout must be a positive duration")
+	errNonPositiveFlushInterval    = errors.New("flush_interval must be a positive duration when batch_size > 0")
 )
 
 // Config defines configuration for the API Key Routing Connector.
 type Config struct {
-	// KeyServiceURL is the base URL of the Key Service API.
-	// The connector appends "/v1/api/keys/{key}" to this URL.
+	// KeyServiceURL is the full URL template for the Key Service API.
+	// Must contain `{api_key}` placeholder which will be replaced with the actual key.
+	// Example: "http://key-service:8080/v1/apikeys/{api_key}/exporter"
 	// Required.
 	KeyServiceURL string `mapstructure:"key_service_url"`
 
@@ -51,6 +55,19 @@ type Config struct {
 	// exporter is shut down and evicted from the cache.
 	// Default: 30m
 	ExporterIdleTimeout time.Duration `mapstructure:"exporter_idle_timeout"`
+
+	// BatchSize is the number of records (log records / data points / spans)
+	// to accumulate per API key before flushing to the downstream exporter.
+	// This provides per-key batching without losing the API key context.
+	// Set to 0 to disable buffering (forward immediately).
+	// Default: 0 (disabled)
+	BatchSize int `mapstructure:"batch_size"`
+
+	// FlushInterval is the maximum time to wait before flushing a non-empty
+	// per-key buffer, even if BatchSize has not been reached.
+	// Only used when BatchSize > 0.
+	// Default: 5s
+	FlushInterval time.Duration `mapstructure:"flush_interval"`
 }
 
 // Validate checks the configuration for required fields and constraints.
@@ -58,11 +75,17 @@ func (c *Config) Validate() error {
 	if c.KeyServiceURL == "" {
 		return errEmptyKeyServiceURL
 	}
+	if !strings.Contains(c.KeyServiceURL, "{api_key}") {
+		return errMissingAPIKeyPlaceholder
+	}
 	if c.CacheTTL <= 0 {
 		return errNonPositiveCacheTTL
 	}
 	if c.KeyServiceTimeout <= 0 {
 		return errNonPositiveServiceTimeout
+	}
+	if c.BatchSize > 0 && c.FlushInterval <= 0 {
+		return errNonPositiveFlushInterval
 	}
 	return nil
 }

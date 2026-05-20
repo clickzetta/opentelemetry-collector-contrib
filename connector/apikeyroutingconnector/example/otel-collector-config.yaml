@@ -34,9 +34,9 @@ processors:
 
 connectors:
   apikeyrouting:
-    # Base URL of the Key Service API.
-    # The connector calls GET {key_service_url}/v1/api/keys/{api_key}
-    key_service_url: "http://key-service:8080"
+    # Full URL template for the Key Service API.
+    # The connector replaces {api_key} with the actual key from the request.
+    key_service_url: "http://key-service:8080/v1/apikeys/{api_key}/exporter"
 
     # The metadata key to extract the API key from (default: x-api-key).
     key_header: "x-api-key"
@@ -114,13 +114,19 @@ service:
     # Key Service returns:
     #
     #   {
-    #     "pipeline_id": "tenant-a",
-    #     "exporter_type": "clickzetta",
-    #     "exporter_config": {
-    #       "service": "tenant-a-lakehouse.example.com",
-    #       "username": "tenant_a_writer",
-    #       ...
-    #     }
+    #     "id": 0,
+    #     "name": "tenant-a",
+    #     "exporters": [
+    #       {
+    #         "exporter_id": "0",
+    #         "exporter_type": "clickzetta",
+    #         "exporter_config": {
+    #           "service": "tenant-a-lakehouse.example.com",
+    #           "username": "tenant_a_writer",
+    #           ...
+    #         }
+    #       }
+    #     ]
     #   }
     #
     # The connector will dynamically create a clickzetta exporter with that

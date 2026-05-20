@@ -14,14 +14,14 @@ import (
 // extract key → check cache → call Key Service → stale fallback → default.
 //
 // Returns the target RouteEntry slice or nil (route to default).
-// A nil return with no error means the caller should route to the default pipeline.
+// A nil return means the caller should route to the default pipeline.
 func resolveRoute(
 	ctx context.Context,
 	cfg *Config,
 	cache *RouteCache,
 	keyClient *KeyServiceClient,
 	logger *zap.Logger,
-) ([]*RouteEntry, error) {
+) []*RouteEntry {
 	// Step 1: Extract API key from context.
 	key, err := extractAPIKey(ctx, cfg.KeyHeader)
 	if err != nil {
@@ -29,32 +29,49 @@ func resolveRoute(
 			logger.Warn("API key header missing from request metadata, routing to default",
 				zap.String("header", cfg.KeyHeader),
 			)
-			return nil, nil
+			return nil
 		}
 		if errors.Is(err, errEmptyKey) {
 			logger.Warn("API key header value is empty after trimming, routing to default",
 				zap.String("header", cfg.KeyHeader),
 			)
-			return nil, nil
+			return nil
 		}
 		// Unexpected extraction error — route to default.
 		logger.Warn("unexpected error extracting API key, routing to default",
 			zap.String("header", cfg.KeyHeader),
 			zap.Error(err),
 		)
-		return nil, nil
+		return nil
 	}
 
+	return resolveRouteForKey(ctx, key, cfg, cache, keyClient, logger)
+}
+
+// resolveRouteForKey resolves the route for an explicit API key string.
+// This is the core resolution logic used by both context-based and flush-based routing.
+//
+// Returns the target RouteEntry slice or nil (route to default).
+// A nil return means the caller should route to the default pipeline.
+func resolveRouteForKey(
+	ctx context.Context,
+	key string,
+	cfg *Config,
+	cache *RouteCache,
+	keyClient *KeyServiceClient,
+	logger *zap.Logger,
+) []*RouteEntry {
 	maskedKey := maskAPIKey(key)
 
 	// Step 2: Check cache for a fresh entry.
-	entry, fresh := cache.Get(key)
-	if entry != nil && fresh {
+	cached, fresh := cache.Get(key)
+	if cached != nil && fresh {
 		logger.Debug("cache hit (fresh), routing to cached pipeline",
 			zap.String("key", maskedKey),
-			zap.String("pipeline_id", entry.PipelineID),
+			zap.String("pipeline_id", cached[0].PipelineID),
+			zap.Int("exporter_count", len(cached)),
 		)
-		return []*RouteEntry{entry}, nil
+		return cached
 	}
 
 	// Step 3: Call Key Service to resolve the key.
@@ -68,20 +85,18 @@ func resolveRoute(
 				zap.String("key", maskedKey),
 				zap.Error(parseErr),
 			)
-			return staleFallbackOrDefault(entry, maskedKey, logger), nil
+			return staleFallbackOrDefault(cached, maskedKey, logger)
 		}
 
-		// Store each entry in cache.
-		for _, e := range entries {
-			cache.Set(key, e)
-		}
+		// Store all entries in cache as a single unit.
+		cache.Set(key, entries)
 
 		logger.Debug("Key Service resolved successfully, cache updated",
 			zap.String("key", maskedKey),
 			zap.String("pipeline_id", entries[0].PipelineID),
-			zap.Int("pipeline_count", len(entries)),
+			zap.Int("exporter_count", len(entries)),
 		)
-		return entries, nil
+		return entries
 	}
 
 	// Step 4: Handle Key Service errors.
@@ -91,7 +106,7 @@ func resolveRoute(
 			zap.String("key", maskedKey),
 			zap.Error(err),
 		)
-		return nil, nil
+		return nil
 	}
 
 	// Retryable error (5xx/timeout/network): attempt stale cache fallback.
@@ -100,7 +115,7 @@ func resolveRoute(
 			zap.String("key", maskedKey),
 			zap.Error(err),
 		)
-		return staleFallbackOrDefault(entry, maskedKey, logger), nil
+		return staleFallbackOrDefault(cached, maskedKey, logger)
 	}
 
 	// Unknown error type — treat as retryable and attempt stale fallback.
@@ -108,18 +123,18 @@ func resolveRoute(
 		zap.String("key", maskedKey),
 		zap.Error(err),
 	)
-	return staleFallbackOrDefault(entry, maskedKey, logger), nil
+	return staleFallbackOrDefault(cached, maskedKey, logger)
 }
 
-// staleFallbackOrDefault returns the stale cache entry if available,
-// or nil (route to default) if no stale entry exists.
-func staleFallbackOrDefault(staleEntry *RouteEntry, maskedKey string, logger *zap.Logger) []*RouteEntry {
-	if staleEntry != nil {
+// staleFallbackOrDefault returns the stale cache entries if available,
+// or nil (route to default) if no stale entries exist.
+func staleFallbackOrDefault(staleEntries []*RouteEntry, maskedKey string, logger *zap.Logger) []*RouteEntry {
+	if len(staleEntries) > 0 {
 		logger.Warn("serving stale cache entry due to Key Service unavailability",
 			zap.String("key", maskedKey),
-			zap.String("pipeline_id", staleEntry.PipelineID),
+			zap.String("pipeline_id", staleEntries[0].PipelineID),
 		)
-		return []*RouteEntry{staleEntry}
+		return staleEntries
 	}
 
 	logger.Warn("no stale cache entry available, routing to default",
