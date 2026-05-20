@@ -47,29 +47,15 @@ type Config struct {
 	MetricsTableName string `mapstructure:"metrics_table_name"`
 	// CreateSchema if true will run DDL for creating tables. Default is true.
 	CreateSchema bool `mapstructure:"create_schema"`
-
-	// APIKeyServiceURL is the base URL of the Key Service.
-	// When set, enables API key gateway mode.
-	APIKeyServiceURL string `mapstructure:"apikey_service_url"`
-	// APIKeyHeader is the metadata key to extract the API key from.
-	// Default: "x-api-key"
-	APIKeyHeader string `mapstructure:"apikey_header"`
-	// RouterMode selects the router implementation.
-	// Valid values: "real", "mock". Default: "real"
-	RouterMode string `mapstructure:"router_mode"`
-	// CacheTTL is the duration to cache Key Service responses.
-	// Default: 5m
-	CacheTTL time.Duration `mapstructure:"cache_ttl"`
 }
 
 var (
-	errNoService        = errors.New("service must be specified")
-	errNoUsername       = errors.New("username must be specified")
-	errNoPassword       = errors.New("password must be specified")
-	errNoWorkspace      = errors.New("workspace must be specified")
+	errNoService       = errors.New("service must be specified")
+	errNoUsername      = errors.New("username must be specified")
+	errNoPassword      = errors.New("password must be specified")
+	errNoWorkspace     = errors.New("workspace must be specified")
 	errNoVirtualCluster = errors.New("virtual_cluster must be specified")
-	errNoInstance       = errors.New("instance must be specified")
-	errInvalidRouterMode = errors.New(`router_mode must be "real" or "mock"`)
+	errNoInstance      = errors.New("instance must be specified")
 
 	validIdentifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_.]*$`)
 )
@@ -87,61 +73,36 @@ func createDefaultConfig() component.Config {
 		TracesTableName: "otel_traces",
 		MetricsTableName: "otel_metrics",
 		CreateSchema:    true,
-		APIKeyHeader:    "x-api-key",
-		RouterMode:      "real",
-		CacheTTL:        5 * time.Minute,
 	}
 }
 
 // Validate checks the configuration for required fields.
 func (cfg *Config) Validate() error {
 	var err error
-
-	if cfg.isSingleTenantMode() {
-		// Single-tenant mode requires all connection fields.
-		if cfg.Service == "" {
-			err = errors.Join(err, errNoService)
-		}
-		if cfg.Username == "" {
-			err = errors.Join(err, errNoUsername)
-		}
-		if string(cfg.Password) == "" {
-			err = errors.Join(err, errNoPassword)
-		}
-		if cfg.Workspace == "" {
-			err = errors.Join(err, errNoWorkspace)
-		}
-		if cfg.VirtualCluster == "" {
-			err = errors.Join(err, errNoVirtualCluster)
-		}
-		if cfg.Instance == "" {
-			err = errors.Join(err, errNoInstance)
-		}
+	if cfg.Service == "" {
+		err = errors.Join(err, errNoService)
 	}
-
-	if cfg.isGatewayMode() {
-		// Gateway mode requires a valid router_mode.
-		if cfg.RouterMode != "" && cfg.RouterMode != "real" && cfg.RouterMode != "mock" {
-			err = errors.Join(err, errInvalidRouterMode)
-		}
+	if cfg.Username == "" {
+		err = errors.Join(err, errNoUsername)
 	}
-
+	if string(cfg.Password) == "" {
+		err = errors.Join(err, errNoPassword)
+	}
+	if cfg.Workspace == "" {
+		err = errors.Join(err, errNoWorkspace)
+	}
+	if cfg.VirtualCluster == "" {
+		err = errors.Join(err, errNoVirtualCluster)
+	}
+	if cfg.Instance == "" {
+		err = errors.Join(err, errNoInstance)
+	}
 	for _, name := range []string{cfg.LogsTableName, cfg.TracesTableName, cfg.MetricsTableName} {
 		if name != "" && !validIdentifier.MatchString(name) {
 			err = errors.Join(err, fmt.Errorf("table name %q contains invalid characters; must match [a-zA-Z_][a-zA-Z0-9_.]*", name))
 		}
 	}
 	return err
-}
-
-// isGatewayMode returns true when the exporter is configured for API key gateway mode.
-func (cfg *Config) isGatewayMode() bool {
-	return cfg.APIKeyServiceURL != ""
-}
-
-// isSingleTenantMode returns true when the exporter is configured for single-tenant mode.
-func (cfg *Config) isSingleTenantMode() bool {
-	return !cfg.isGatewayMode()
 }
 
 // DSN builds the ClickZetta DSN string from config.
